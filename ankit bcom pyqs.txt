@@ -1,0 +1,1353 @@
+1.a)Create 2 text files. Read the contents in a single RDD. b) Create 2 CSV files. Read the contents in a single RDD.
+SOL:( !pip install --quiet pyspark)
+from pyspark import SparkContext
+
+# Create SparkContext (only once in the notebook)
+sc = SparkContext("local", "DataEngineeringPractical")
+
+print("✅ SparkContext created successfully!")
+
+a.
+# Create first text file
+with open("/content/text1.txt", "w") as f:
+    f.write("Apple\nBanana\nCherry")
+
+# Create second text file
+with open("/content/text2.txt", "w") as f:
+    f.write("Mango\nOrange\nGrapes")
+
+# Read both text files together using wildcards or list
+rdd = sc.textFile("/content/text*.txt")
+
+# Display the data
+print("Contents of combined RDD:")
+print(rdd.collect())
+
+b.
+import pandas as pd
+
+# First CSV
+df1 = pd.DataFrame({
+    'ID': [1, 2, 3],
+    'Name': ['Alice', 'Bob', 'Charlie']
+})
+df1.to_csv('/content/data1.csv', index=False)
+
+# Second CSV
+df2 = pd.DataFrame({
+    'ID': [4, 5, 6],
+    'Name': ['David', 'Eva', 'Frank']
+})
+df2.to_csv('/content/data2.csv', index=False)
+
+# Read both CSVs as text (each line will be a record)
+csv_rdd = sc.textFile("/content/data*.csv")
+
+# Show the combined contents
+print("Combined CSV RDD:")
+print(csv_rdd.collect())
+
+
+2.Create two dataframes one for employee and other for dept. Perform 
+a) Left outer join 
+b) Full outer join 
+c) Inner join 
+sol:
+from pyspark.sql import SparkSession
+
+# Create a SparkSession (used for DataFrames)
+spark = SparkSession.builder.appName("DataEngineeringPractical_Q2").getOrCreate()
+print("✅ SparkSession created successfully!")
+
+from pyspark.sql import Row
+
+# Create Employee DataFrame
+employee_data = [
+    Row(emp_id=1, emp_name="Alice", dept_id=101),
+    Row(emp_id=2, emp_name="Bob", dept_id=102),
+    Row(emp_id=3, emp_name="Charlie", dept_id=103),
+    Row(emp_id=4, emp_name="David", dept_id=104)
+]
+
+employee_df = spark.createDataFrame(employee_data)
+print("Employee DataFrame:")
+employee_df.show()
+
+# Create Department DataFrame
+dept_data = [
+    Row(dept_id=101, dept_name="HR"),
+    Row(dept_id=102, dept_name="Finance"),
+    Row(dept_id=105, dept_name="IT")
+]
+
+dept_df = spark.createDataFrame(dept_data)
+print("Department DataFrame:")
+dept_df.show()
+
+a.
+print("Left Outer Join Result:")
+left_join_df = employee_df.join(dept_df, employee_df.dept_id == dept_df.dept_id, "left")
+left_join_df.show()
+
+b.
+print("Full Outer Join Result:")
+full_join_df = employee_df.join(dept_df, employee_df.dept_id == dept_df.dept_id, "outer")
+full_join_df.show()
+
+c.
+print("Inner Join Result:")
+inner_join_df = employee_df.join(dept_df, employee_df.dept_id == dept_df.dept_id, "inner")
+inner_join_df.show()
+
+
+3.For the following data and schema create a dataframe and perform the given 
+operations 
+Data: Seq(Row(Row("James;","","Smith"),"36636","M","20000"), 
+      Row(Row("Michael","Rose",""),"40288","M","40000"), 
+      Row(Row("Robert","","Williams"),"42114","M","10000"), 
+      Row(Row("Maria","Anne","Jones"),"39192","F","45000"), 
+      Row(Row("Jen","Mary","Brown"),"","F","-1") 
+    ) 
+Schema should have the columns as: 
+firstname, middlename, lastname, dob, gender, expenses 
+All columns will be of type String 
+ 
+Perform the following operations: 
+a) Change the data type of expenses to Integer 
+b) Rename dob to DateOfBirth 
+c) Create a column that has value expense*5 
+
+sol:
+from pyspark.sql import Row
+from pyspark.sql.types import StructType, StructField, StringType
+from pyspark.sql.functions import col
+
+data = [
+    Row(Row("James", "", "Smith"), "36636", "M", "20000"),
+    Row(Row("Michael", "Rose", ""), "40288", "M", "40000"),
+    Row(Row("Robert", "", "Williams"), "42114", "M", "10000"),
+    Row(Row("Maria", "Anne", "Jones"), "39192", "F", "45000"),
+    Row(Row("Jen", "Mary", "Brown"), "", "F", "-1")
+]
+
+schema = StructType([
+    StructField("name", StructType([
+        StructField("firstname", StringType(), True),
+        StructField("middlename", StringType(), True),
+        StructField("lastname", StringType(), True)
+    ])),
+    StructField("dob", StringType(), True),
+    StructField("gender", StringType(), True),
+    StructField("expenses", StringType(), True)
+])
+
+
+df = spark.createDataFrame(data, schema)
+print("Initial DataFrame:")
+df.show(truncate=False)
+
+a.
+df1 = df.withColumn("expenses", col("expenses").cast("int"))
+print("✅ (a) Expenses converted to Integer:")
+df1.printSchema()
+df1.show(truncate=False)
+
+b.
+df2 = df1.withColumnRenamed("dob", "DateOfBirth")
+print("✅ (b) Renamed dob → DateOfBirth:")
+df2.show(truncate=False)
+
+c.
+df3 = df2.withColumn("ExpenseTimes5", col("expenses") * 5)
+print("✅ (c) Created new column ExpenseTimes5 = expenses * 5:")
+df3.show(truncate=False)
+
+
+ 4.Create a data frame with a nested array column. Perform the following 
+operations: 
+a) Flatten nested array 
+b) Explode nested array 
+c) Convert array of string to string column.
+sol:
+from pyspark.sql import SparkSession
+from pyspark.sql.functions import col, explode, flatten, concat_ws
+from pyspark.sql.types import StructType, StructField, StringType, ArrayType
+
+spark = SparkSession.builder.appName("DataEngineeringPractical_Q4").getOrCreate()
+print("✅ SparkSession created successfully!")
+
+# Each person has an array of arrays of skills (nested array)
+data = [
+    ("James", [["Python", "SQL"], ["Spark", "Java"]]),
+    ("Michael", [["C++", "Go"], ["Rust", "Python"]]),
+    ("Maria", [["HTML", "CSS"], ["JavaScript", "React"]])
+]
+
+schema = StructType([
+    StructField("name", StringType(), True),
+    StructField("skills", ArrayType(ArrayType(StringType())), True)
+])
+
+df = spark.createDataFrame(data, schema)
+print("🎯 Original DataFrame:")
+df.show(truncate=False)
+
+a.
+df_flat = df.withColumn("flattened_skills", flatten(col("skills")))
+print("✅ (a) Flattened Array Column:")
+df_flat.show(truncate=False)
+
+b.
+df_exploded = df.select(col("name"), explode(col("skills")).alias("each_array"))
+print("✅ (b) Exploded Array (each inner array becomes a row):")
+df_exploded.show(truncate=False)
+
+c.
+df_string = df_flat.withColumn("skills_string", concat_ws(", ", col("flattened_skills")))
+print("✅ (c) Array converted to a single string column:")
+df_string.show(truncate=False)
+
+
+5.a) Create a data frame with today’s date and timestamp 
+b) Display the hours, minutes and seconds from the timestamp 
+sol:
+from pyspark.sql import SparkSession
+from pyspark.sql.functions import current_date, current_timestamp, hour, minute, second
+
+spark = SparkSession.builder.appName("DataEngineeringPractical_Q5").getOrCreate()
+print("✅ SparkSession created successfully!")
+
+a.
+# Create DataFrame with one row containing current date and timestamp
+df = spark.createDataFrame([(1,)], ["id"]) \
+    .withColumn("today_date", current_date()) \
+    .withColumn("current_time", current_timestamp())
+
+print("✅ (a) DataFrame with today's date and timestamp:")
+df.show(truncate=False)
+
+b.
+# Extract hour, minute, second using built-in functions
+df_time_parts = df.withColumn("hour", hour("current_time")) \
+                  .withColumn("minute", minute("current_time")) \
+                  .withColumn("second", second("current_time"))
+
+print("✅ (b) Extracted hours, minutes, and seconds:")
+df_time_parts.show(truncate=False)
+
+
+6.For the following employee data showing name, dept and salary, perform the 
+given operations: 
+Data: ("James", "Sales", 3000), 
+    ("Michael", "Sales", 4600), 
+    ("Robert", "Sales", 4100), 
+    ("Maria", "Finance", 3000), 
+    ("James", "Sales", 3000), 
+    ("Scott", "Finance", 3300), 
+    ("Jen", "Finance", 3900), 
+    ("Jeff", "Marketing", 3000), 
+    ("Kumar", "Marketing", 2000), 
+    ("Saif", "Sales", 4100), 
+    (Jason", "Sales", 9000), 
+    ("Alice", "Finance", 3700), 
+    ("Jenniffer", "Finance", 8900), 
+    ("Jenson", "Marketing", 9000) 
+ 
+a) Create a data frame for the above data 
+b) Display average salary 
+c) Display number of unique departments 
+d) Display number of employees with unique salary 
+
+sol:
+from pyspark.sql import SparkSession
+from pyspark.sql.functions import avg, countDistinct
+
+spark = SparkSession.builder.appName("DataEngineeringPractical_Q6").getOrCreate()
+print("✅ SparkSession created successfully!")
+
+a.
+# Employee data
+data = [
+    ("James", "Sales", 3000),
+    ("Michael", "Sales", 4600),
+    ("Robert", "Sales", 4100),
+    ("Maria", "Finance", 3000),
+    ("James", "Sales", 3000),
+    ("Scott", "Finance", 3300),
+    ("Jen", "Finance", 3900),
+    ("Jeff", "Marketing", 3000),
+    ("Kumar", "Marketing", 2000),
+    ("Saif", "Sales", 4100),
+    ("Jason", "Sales", 9000),
+    ("Alice", "Finance", 3700),
+    ("Jenniffer", "Finance", 8900),
+    ("Jenson", "Marketing", 9000)
+]
+
+# Define schema
+columns = ["EmployeeName", "Department", "Salary"]
+
+# Create DataFrame
+df = spark.createDataFrame(data, columns)
+
+print("✅ (a) Employee DataFrame:")
+df.show()
+
+b.
+print("✅ (b) Average Salary of all employees:")
+df.select(avg("Salary").alias("Average_Salary")).show()
+
+c.
+print("✅ (c) Number of unique departments:")
+df.select(countDistinct("Department").alias("Unique_Departments")).show()
+
+d.
+print("✅ (d) Number of unique salaries:")
+df.select(countDistinct("Salary").alias("Unique_Salary_Count")).show()
+
+
+7.a) Create a data frame containing today’s date, date 2022-01-31, date 
+2021-03-22, date 2024-01-31, date 2023-11-11.  
+b) Store the date in the format MM-DD-YYYY. 
+c) Display the dates in the format DD/MM/YYYY 
+d) Find the number of months between each of the dates and today’s date
+sol:
+from pyspark.sql import SparkSession
+from pyspark.sql.functions import current_date, to_date, lit
+
+spark = SparkSession.builder.appName("DataEngineeringPractical_Q7").getOrCreate()
+print("✅ SparkSession created successfully!")
+
+a.
+from datetime import datetime
+
+# Create a list of dates (today + given dates)
+data = [
+    (datetime.today().strftime("%Y-%m-%d"),),  # today's date
+    ("2022-01-31",),
+    ("2021-03-22",),
+    ("2024-01-31",),
+    ("2023-11-11",)
+]
+
+# Define schema
+columns = ["Date"]
+
+# Create DataFrame
+df = spark.createDataFrame(data, columns)
+
+print("✅ DataFrame with Dates:")
+df.show()
+
+
+b.
+from pyspark.sql.functions import date_format, to_date
+
+# Convert the Date column to DateType first (if not already)
+df = df.withColumn("Date", to_date("Date", "yyyy-MM-dd"))
+
+# Create new column with MM-DD-YYYY format
+df = df.withColumn("Date_MM_DD_YYYY", date_format("Date", "MM-dd-yyyy"))
+
+print("✅ Dates in MM-DD-YYYY format:")
+df.show()
+
+c.
+# Create new column with DD/MM/YYYY format
+df = df.withColumn("Date_DD_MM_YYYY", date_format("Date", "dd/MM/yyyy"))
+
+print("✅ Dates in DD/MM/YYYY format:")
+df.show()
+
+d.
+from pyspark.sql.functions import months_between, current_date
+
+# Calculate months difference between today and each date
+df = df.withColumn("Months_from_Today", months_between(current_date(), "Date").cast("int"))
+
+print("✅ Number of months from today:")
+df.show()
+
+
+8.a) Create data frame with a column that contains JSON string. 
+b) Convert the JSON string into Struct type or Map type. 
+c) Extract the Data from JSON and create them as new columns. 
+d) Convert MapType or Struct type to JSON string 
+sol:
+from pyspark.sql import SparkSession
+from pyspark.sql.functions import *
+from pyspark.sql.types import *
+import json
+
+# Create SparkSession
+spark = SparkSession.builder.appName("JSONOperations").getOrCreate()
+
+print("=" * 50)
+print("JSON STRING OPERATIONS IN DATAFRAME")
+print("=" * 50)
+
+# a) Create DataFrame with JSON string column
+print("\n PART A: Create DataFrame with JSON string column")
+
+# Sample data with JSON strings
+data = [
+    (1, '{"name": "John", "age": 28, "city": "Mumbai", "skills": ["Python", "Spark"]}'),
+    (2, '{"name": "Alice", "age": 24, "city": "Pune", "skills": ["Java", "SQL"]}'),
+    (3, '{"name": "Bob", "age": 32, "city": "Delhi", "skills": ["Scala", "Kafka"]}'),
+    (4, '{"name": "Emma", "age": 29, "city": "Mumbai", "skills": ["Python", "ML"]}')
+]
+
+columns = ["id", "json_data"]
+df = spark.createDataFrame(data, columns)
+
+print(" DataFrame with JSON string column:")
+df.show(truncate=False)
+
+# b) Convert JSON string to Struct type
+print("\n PART B: Convert JSON string to Struct type")
+
+# Define schema for the JSON structure
+json_schema = StructType([
+    StructField("name", StringType(), True),
+    StructField("age", IntegerType(), True),
+    StructField("city", StringType(), True),
+    StructField("skills", ArrayType(StringType()), True)
+])
+
+# Convert JSON string to Struct type
+df_struct = df.withColumn("parsed_data", from_json("json_data", json_schema))
+
+print(" DataFrame with parsed Struct type:")
+df_struct.show(truncate=False)
+df_struct.printSchema()
+
+# Alternative: Convert to Map type
+print("\n ALTERNATIVE: Convert JSON string to Map type")
+
+df_map = df.withColumn("parsed_map", from_json("json_data", MapType(StringType(), StringType())))
+
+print(" DataFrame with parsed Map type:")
+df_map.show(truncate=False)
+df_map.printSchema()
+
+# c) Extract data from JSON and create new columns
+print("\n PART C: Extract data from JSON as new columns")
+
+# Method 1: Using Struct type access
+df_extracted = df_struct \
+    .withColumn("employee_name", col("parsed_data.name")) \
+    .withColumn("employee_age", col("parsed_data.age")) \
+    .withColumn("employee_city", col("parsed_data.city")) \
+    .withColumn("employee_skills", col("parsed_data.skills"))
+
+print(" Extracted data as new columns (Struct method):")
+df_extracted.select("id", "employee_name", "employee_age", "employee_city", "employee_skills").show(truncate=False)
+
+# Method 2: Using get_json_object() function
+df_extracted_method2 = df \
+    .withColumn("name", get_json_object("json_data", "$.name")) \
+    .withColumn("age", get_json_object("json_data", "$.age").cast("int")) \
+    .withColumn("city", get_json_object("json_data", "$.city")) \
+    .withColumn("skills", get_json_object("json_data", "$.skills"))
+
+print("Extracted data using get_json_object():")
+df_extracted_method2.show(truncate=False)
+
+# Method 3: Using json_tuple() for simple extraction
+df_extracted_method3 = df \
+    .select("id", "json_data",
+            json_tuple("json_data", "name", "age", "city").alias("name", "age", "city"))
+
+print("Extracted data using json_tuple():")
+df_extracted_method3.show(truncate=False)
+
+# d) Convert MapType or Struct type back to JSON string
+print("\n🔹 PART D: Convert back to JSON string")
+
+# Convert Struct type to JSON string
+df_back_to_json = df_extracted \
+    .withColumn("back_to_json_string", to_json("parsed_data"))
+
+print("Struct type converted back to JSON string:")
+df_back_to_json.select("id", "parsed_data", "back_to_json_string").show(truncate=False)
+
+# Convert individual columns to JSON string
+df_custom_json = df_extracted \
+    .withColumn("custom_json", to_json(
+        struct(
+            col("employee_name").alias("name"),
+            col("employee_age").alias("age"),
+            col("employee_city").alias("city"),
+            col("employee_skills").alias("skills")
+        )
+    ))
+
+print(" Custom Struct converted to JSON string:")
+df_custom_json.select("id", "employee_name", "employee_age", "custom_json").show(truncate=False)
+
+# Complete workflow demonstration
+print("\n COMPLETE WORKFLOW DEMONSTRATION")
+
+final_result = df \
+    .withColumn("parsed_struct", from_json("json_data", json_schema)) \
+    .withColumn("extracted_name", col("parsed_struct.name")) \
+    .withColumn("extracted_age", col("parsed_struct.age")) \
+    .withColumn("extracted_city", col("parsed_struct.city")) \
+    .withColumn("final_json", to_json("parsed_struct"))
+
+print("Complete JSON Processing Workflow:")
+final_result.select("id", "json_data", "extracted_name", "extracted_age", "extracted_city", "final_json").show(truncate=False)
+
+# Show schema of final result
+print("\nFinal DataFrame Schema:")
+final_result.printSchema()
+
+# Performance comparison of different methods
+print("\n PERFORMANCE COMPARISON")
+
+# Method 1: from_json with schema (Recommended)
+print("Method 1: from_json() with explicit schema - FASTEST")
+# Method 2: get_json_object() 
+print(" Method 2: get_json_object() - GOOD for selective extraction")
+# Method 3: json_tuple()
+print(" Method 3: json_tuple() - FAST for simple flat JSON")
+
+spark.stop()
+
+
+9.a) Create a data frame containing today’s date, date 2022-01-31, date 
+2021-03-22, date 2024-01-31 
+b) Add 5 days to each date and display the result. 
+c) Display the new dates after subtracting 10 days from each date. 
+d) For each date, display year, month, dayofweek, dayofmonth, dayofyear,        
+next_day,weekofyear 
+sol:
+from pyspark.sql import SparkSession
+from pyspark.sql.functions import *
+
+# Create SparkSession
+spark = SparkSession.builder.appName("DateDemo").getOrCreate()
+
+# a) Create DataFrame with dates
+dates = [("2024-10-05",), ("2022-01-31",), ("2021-03-22",), ("2024-01-31",)]
+df = spark.createDataFrame(dates, ["date"])
+df = df.withColumn("date", to_date("date"))
+
+print("Original Dates:")
+df.show()
+
+# b) Add 5 days
+df = df.withColumn("date_plus_5", date_add("date", 5))
+
+# c) Subtract 10 days  
+df = df.withColumn("date_minus_10", date_sub("date", 10))
+
+# d) Extract date components
+df = df.withColumn("year", year("date")) \
+       .withColumn("month", month("date")) \
+       .withColumn("dayofweek", dayofweek("date")) \
+       .withColumn("dayofmonth", dayofmonth("date")) \
+       .withColumn("dayofyear", dayofyear("date")) \
+       .withColumn("next_sunday", next_day("date", "Sunday")) \
+       .withColumn("weekofyear", weekofyear("date"))
+
+print("Final Result:")
+df.show()
+
+spark.stop()
+
+
+11.Refer to the employee.json file. Perform the following operations:
+a) Print the names of employees above 25 years of age.
+b) Print the number of employees of different ages
+SOL:
+from pyspark.sql import SparkSession
+from pyspark.sql.functions import *
+
+# Create SparkSession
+spark = SparkSession.builder.appName("EmployeeAnalysis").getOrCreate()
+
+# Create sample employee.json file
+employee_data = [
+    '{"name": "John", "age": 28, "department": "IT"}',
+    '{"name": "Alice", "age": 24, "department": "HR"}',
+    '{"name": "Bob", "age": 32, "department": "Finance"}',
+    '{"name": "Emma", "age": 29, "department": "IT"}',
+    '{"name": "Mike", "age": 22, "department": "Marketing"}',
+    '{"name": "Sarah", "age": 35, "department": "Finance"}'
+]
+
+# Write to JSON file
+with open('/content/employee.json', 'w') as f:
+    for emp in employee_data:
+        f.write(emp + '\n')
+
+# Read JSON file
+df = spark.read.json("/content/employee.json")
+
+print("All Employees:")
+df.show()
+
+# a) Print names of employees above 25 years
+print("Employees above 25 years:")
+df.filter(col("age") > 25).select("name", "age").show()
+
+# b) Print number of employees by age
+print("Employee count by age:")
+df.groupBy("age").count().orderBy("age").show()
+
+spark.stop()
+
+
+
+12.Create two dataframes one for employee and other for dept. Perform
+a) Left anti join
+b) Self join
+c) Left semi join
+SOL:
+from pyspark.sql import SparkSession
+from pyspark.sql import Row
+
+# Create SparkSession
+spark = SparkSession.builder.appName("JoinDemo").getOrCreate()
+
+# Create Employee DataFrame
+employees = [
+    (1, "John", 101),
+    (2, "Alice", 102),
+    (3, "Bob", 103),
+    (4, "Emma", 104),
+    (5, "Mike", 105)
+]
+emp_df = spark.createDataFrame(employees, ["emp_id", "name", "dept_id"])
+
+# Create Department DataFrame
+departments = [
+    (101, "IT"),
+    (102, "HR"),
+    (103, "Finance"),
+    (106, "Marketing")
+]
+dept_df = spark.createDataFrame(departments, ["dept_id", "dept_name"])
+
+print("Employee DataFrame:")
+emp_df.show()
+
+print("Department DataFrame:")
+dept_df.show()
+
+# a) Left Anti Join: Employees with no department
+print("Left Anti Join (Employees with no department):")
+anti_join = emp_df.join(dept_df, "dept_id", "left_anti")
+anti_join.show()
+
+# b) Self Join: Employees with same department
+print("Self Join (Employees in same department):")
+self_join = emp_df.alias("e1").join(
+    emp_df.alias("e2"), 
+    (col("e1.dept_id") == col("e2.dept_id")) & (col("e1.emp_id") != col("e2.emp_id"))
+).select(
+    col("e1.emp_id").alias("emp1_id"),
+    col("e1.name").alias("emp1_name"),
+    col("e2.emp_id").alias("emp2_id"), 
+    col("e2.name").alias("emp2_name"),
+    col("e1.dept_id")
+)
+self_join.show()
+
+# c) Left Semi Join: Employees who have a department
+print("Left Semi Join (Employees with department):")
+semi_join = emp_df.join(dept_df, "dept_id", "left_semi")
+semi_join.show()
+
+spark.stop()
+
+
+13.a) Create two case classes – Student and Address
+b) Create schema from these case classes
+SOL:
+from pyspark.sql import SparkSession
+from pyspark.sql import Row
+
+# Create SparkSession
+spark = SparkSession.builder.appName("JoinDemo").getOrCreate()
+
+# Create Employee DataFrame
+employees = [
+    (1, "John", 101),
+    (2, "Alice", 102),
+    (3, "Bob", 103),
+    (4, "Emma", 104),
+    (5, "Mike", 105)
+]
+emp_df = spark.createDataFrame(employees, ["emp_id", "name", "dept_id"])
+
+# Create Department DataFrame
+departments = [
+    (101, "IT"),
+    (102, "HR"),
+    (103, "Finance"),
+    (106, "Marketing")
+]
+dept_df = spark.createDataFrame(departments, ["dept_id", "dept_name"])
+
+print("Employee DataFrame:")
+emp_df.show()
+
+print("Department DataFrame:")
+dept_df.show()
+
+# a) Left Anti Join: Employees with no department
+print("Left Anti Join (Employees with no department):")
+anti_join = emp_df.join(dept_df, "dept_id", "left_anti")
+anti_join.show()
+
+# b) Self Join: Employees with same department
+print("Self Join (Employees in same department):")
+self_join = emp_df.alias("e1").join(
+    emp_df.alias("e2"), 
+    (col("e1.dept_id") == col("e2.dept_id")) & (col("e1.emp_id") != col("e2.emp_id"))
+).select(
+    col("e1.emp_id").alias("emp1_id"),
+    col("e1.name").alias("emp1_name"),
+    col("e2.emp_id").alias("emp2_id"), 
+    col("e2.name").alias("emp2_name"),
+    col("e1.dept_id")
+)
+self_join.show()
+
+# c) Left Semi Join: Employees who have a department
+print("Left Semi Join (Employees with department):")
+semi_join = emp_df.join(dept_df, "dept_id", "left_semi")
+semi_join.show()
+
+spark.stop()
+
+
+14.a) Create two case classes – Student and Address
+b) Create schema from these case classes
+SOL:
+from pyspark.sql import SparkSession
+from pyspark.sql import Row
+
+# Create SparkSession
+spark = SparkSession.builder.appName("JoinDemo").getOrCreate()
+
+# Create Employee DataFrame
+employees = [
+    (1, "John", 101),
+    (2, "Alice", 102),
+    (3, "Bob", 103),
+    (4, "Emma", 104),
+    (5, "Mike", 105)
+]
+emp_df = spark.createDataFrame(employees, ["emp_id", "name", "dept_id"])
+
+# Create Department DataFrame
+departments = [
+    (101, "IT"),
+    (102, "HR"),
+    (103, "Finance"),
+    (106, "Marketing")
+]
+dept_df = spark.createDataFrame(departments, ["dept_id", "dept_name"])
+
+print("Employee DataFrame:")
+emp_df.show()
+
+print("Department DataFrame:")
+dept_df.show()
+
+# a) Left Anti Join: Employees with no department
+print("Left Anti Join (Employees with no department):")
+anti_join = emp_df.join(dept_df, "dept_id", "left_anti")
+anti_join.show()
+
+# b) Self Join: Employees with same department
+print("Self Join (Employees in same department):")
+self_join = emp_df.alias("e1").join(
+    emp_df.alias("e2"), 
+    (col("e1.dept_id") == col("e2.dept_id")) & (col("e1.emp_id") != col("e2.emp_id"))
+).select(
+    col("e1.emp_id").alias("emp1_id"),
+    col("e1.name").alias("emp1_name"),
+    col("e2.emp_id").alias("emp2_id"), 
+    col("e2.name").alias("emp2_name"),
+    col("e1.dept_id")
+)
+self_join.show()
+
+# c) Left Semi Join: Employees who have a department
+print("Left Semi Join (Employees with department):")
+semi_join = emp_df.join(dept_df, "dept_id", "left_semi")
+semi_join.show()
+
+spark.stop()
+
+
+15.Create a data frame with data that follows the below given schema 
+emp_id, dept, properties (a structure containing salary and location) 
+Return the map keys from spark SQL for this data frame 
+SOL:
+from pyspark.sql import SparkSession
+from pyspark.sql.functions import *
+from pyspark.sql.types import *
+
+# Create SparkSession
+spark = SparkSession.builder.appName("StructMapDemo").getOrCreate()
+
+# Create DataFrame with emp_id, dept, properties (struct with salary and location)
+data = [
+    (1, "IT", {"salary": 50000, "location": "Mumbai"}),
+    (2, "HR", {"salary": 45000, "location": "Pune"}),
+    (3, "Finance", {"salary": 60000, "location": "Delhi"}),
+    (4, "IT", {"salary": 55000, "location": "Bangalore"})
+]
+
+# Define schema
+schema = StructType([
+    StructField("emp_id", IntegerType(), True),
+    StructField("dept", StringType(), True),
+    StructField("properties", MapType(StringType(), StringType()), True)
+])
+
+# Create DataFrame
+df = spark.createDataFrame(data, schema)
+
+print("Original DataFrame:")
+df.show(truncate=False)
+
+# Return map keys using map_keys function
+print("Map Keys from properties:")
+df_with_keys = df.withColumn("property_keys", map_keys("properties"))
+df_with_keys.select("emp_id", "dept", "properties", "property_keys").show(truncate=False)
+
+# Extract individual values from map
+print("Extracted Map Values:")
+df_extracted = df.withColumn("salary", col("properties")["salary"]) \
+                .withColumn("location", col("properties")["location"]) \
+                .withColumn("map_keys", map_keys("properties"))
+
+df_extracted.select("emp_id", "dept", "salary", "location", "map_keys").show()
+
+spark.stop()
+
+
+16.For the following employee data showing name, dept and salary, perform the 
+given operations:
+Data: ("James", "Sales", 3000),
+ ("Michael", "Sales", 4600),
+ ("Robert", "Sales", 4100),
+ ("Maria", "Finance", 3000),
+ ("James", "Sales", 3000),
+ ("Scott", "Finance", 3300),
+ ("Jen", "Finance", 3900),
+ ("Jeff", "Marketing", 3000),
+ ("Kumar", "Marketing", 2000),
+ ("Saif", "Sales", 4100),
+ (Jason", "Sales", 9000),
+ ("Alice", "Finance", 3700),
+ ("Jenniffer", "Finance", 8900),
+ ("Jenson", "Marketing", 9000)
+a) Create a data frame for the above data
+b) Find the highest salary value
+c) Find the lowest salary value
+d) Find the standard deviation for the salary
+SOL:
+from pyspark.sql import SparkSession
+from pyspark.sql.functions import *
+
+# Create SparkSession
+spark = SparkSession.builder.appName("SalaryAnalysis").getOrCreate()
+
+# a) Create DataFrame
+data = [
+    ("James", "Sales", 3000),
+    ("Michael", "Sales", 4600),
+    ("Robert", "Sales", 4100),
+    ("Maria", "Finance", 3000),
+    ("James", "Sales", 3000),
+    ("Scott", "Finance", 3300),
+    ("Jen", "Finance", 3900),
+    ("Jeff", "Marketing", 3000),
+    ("Kumar", "Marketing", 2000),
+    ("Saif", "Sales", 4100),
+    ("Jason", "Sales", 9000),
+    ("Alice", "Finance", 3700),
+    ("Jenniffer", "Finance", 8900),
+    ("Jenson", "Marketing", 9000)
+]
+
+df = spark.createDataFrame(data, ["name", "dept", "salary"])
+
+print("Employee DataFrame:")
+df.show()
+
+# b) Highest salary
+print("Highest Salary:")
+df.select(max("salary").alias("max_salary")).show()
+
+# c) Lowest salary  
+print("Lowest Salary:")
+df.select(min("salary").alias("min_salary")).show()
+
+# d) Standard deviation
+print("Salary Standard Deviation:")
+df.select(stddev("salary").alias("salary_std_dev")).show()
+
+spark.stop()
+
+
+17.Create a Spark RDD using 5 different Functions 
+SOL:
+from pyspark import SparkContext
+
+# Create SparkContext
+sc = SparkContext("local", "RDDMethods")
+
+print("5 DIFFERENT WAYS TO CREATE RDD:")
+print("=" * 40)
+
+# Method 1: parallelize() - From Python collection
+data = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+rdd1 = sc.parallelize(data)
+print("1. parallelize() - From Python list:")
+print(f"   Count: {rdd1.count()}, Data: {rdd1.take(5)}")
+
+# Method 2: range() - Create numeric range
+rdd2 = sc.range(1, 11)  # Numbers from 1 to 10
+print("2. range() - Numeric range:")
+print(f"   Count: {rdd2.count()}, Data: {rdd2.take(5)}")
+
+# Method 3: textFile() - From text file
+# First create a text file
+with open("/content/sample.txt", "w") as f:
+    f.write("Line 1\nLine 2\nLine 3\nLine 4\nLine 5")
+
+rdd3 = sc.textFile("/content/sample.txt")
+print("3. textFile() - From text file:")
+print(f"   Count: {rdd3.count()}, Data: {rdd3.collect()}")
+
+# Method 4: wholeTextFiles() - Read entire files
+rdd4 = sc.wholeTextFiles("/content/sample.txt")
+print("4. wholeTextFiles() - Files as key-value:")
+print(f"   Count: {rdd4.count()}, Data: {rdd4.take(1)}")
+
+# Method 5: emptyRDD() - Create empty RDD
+rdd5 = sc.emptyRDD()
+print("5. emptyRDD() - Empty RDD:")
+print(f"   Count: {rdd5.count()}")
+
+sc.stop()
+
+
+18.Write example for following Spark RDD Actions:
+a. aggregate b. treeAggregate c. fold
+d. reduce e. collect
+SOL:
+from pyspark import SparkContext
+
+# Create SparkContext
+sc = SparkContext("local", "RDDActions")
+
+# Sample RDD
+data = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+rdd = sc.parallelize(data)
+
+print("Original RDD:", rdd.collect())
+print("=" * 50)
+
+# a. aggregate - Custom aggregation with different zero value
+print("a. aggregate():")
+# Syntax: aggregate(zeroValue, seqOp, combOp)
+# Sum of all elements + count of elements
+result_agg = rdd.aggregate(
+    (0, 0),  # zeroValue: (sum, count)
+    lambda acc, val: (acc[0] + val, acc[1] + 1),  # seqOp: add value to sum and increment count
+    lambda acc1, acc2: (acc1[0] + acc2[0], acc1[1] + acc2[1])  # combOp: combine accumulators
+)
+print(f"   (Total Sum, Count): {result_agg}")
+print(f"   Average: {result_agg[0] / result_agg[1]}")
+
+# b. treeAggregate - Optimized version of aggregate
+print("\nb. treeAggregate():")
+result_tree = rdd.treeAggregate(
+    0,  # zeroValue
+    lambda acc, val: acc + val,  # seqOp: add values
+    lambda acc1, acc2: acc1 + acc2,  # combOp: combine
+    depth=2  # tree depth
+)
+print(f"   Sum using treeAggregate: {result_tree}")
+
+# c. fold - Similar to reduce but with zero value
+print("\nc. fold():")
+result_fold = rdd.fold(0, lambda a, b: a + b)  # zeroValue + sum operation
+print(f"   Sum using fold: {result_fold}")
+
+# d. reduce - Combine elements
+print("\nd. reduce():")
+result_reduce = rdd.reduce(lambda a, b: a + b)
+print(f"   Sum using reduce: {result_reduce}")
+
+# e. collect - Get all elements as list
+print("\ne. collect():")
+result_collect = rdd.collect()
+print(f"   All elements: {result_collect}")
+
+sc.stop()
+
+
+19.Write example for following Spark RDD Actions:
+a. count b. countApproxDistinct
+c. first d. top e. Min
+SOL:
+from pyspark import SparkContext
+
+# Create SparkContext
+sc = SparkContext("local", "BasicActions")
+
+# Sample RDD with duplicates
+data = [10, 5, 8, 3, 5, 2, 10, 7, 3, 8, 1, 5]
+rdd = sc.parallelize(data)
+
+print("Original RDD:", rdd.collect())
+print("=" * 50)
+
+# a. count - Total number of elements
+print("a. count():")
+total_count = rdd.count()
+print(f"   Total elements: {total_count}")
+
+# b. countApproxDistinct - Approximate distinct count
+print("\nb. countApproxDistinct():")
+approx_distinct = rdd.countApproxDistinct()
+approx_distinct_precise = rdd.countApproxDistinct(0.05)  # with relative accuracy
+print(f"   Approximate distinct count: {approx_distinct}")
+print(f"   More precise distinct count: {approx_distinct_precise}")
+print(f"   Actual distinct count: {rdd.distinct().count()}")
+
+# c. first - First element
+print("\nc. first():")
+first_element = rdd.first()
+print(f"   First element: {first_element}")
+
+# d. top - Top N elements
+print("\nd. top():")
+top_3 = rdd.top(3)  # Largest 3 elements
+top_5 = rdd.top(5)
+print(f"   Top 3 elements: {top_3}")
+print(f"   Top 5 elements: {top_5}")
+
+# e. min - Minimum element
+print("\ne. min():")
+min_element = rdd.min()
+print(f"   Minimum element: {min_element}")
+
+# Bonus: max for comparison
+max_element = rdd.max()
+print(f"   Maximum element: {max_element}")
+
+sc.stop()
+
+
+20.Write Spark Pair RDD Functions
+SOL:
+from pyspark import SparkContext
+
+# Create SparkContext
+sc = SparkContext("local", "PairRDDDemo")
+
+# Create Pair RDD (key-value pairs)
+data = [("a", 1), ("b", 2), ("a", 3), ("c", 4), ("b", 5), ("a", 2)]
+pair_rdd = sc.parallelize(data)
+
+print("Original Pair RDD:", pair_rdd.collect())
+print("=" * 50)
+
+# 1. reduceByKey - Combine values with same key
+print("1. reduceByKey():")
+reduced = pair_rdd.reduceByKey(lambda a, b: a + b)
+print(f"   Sum by key: {reduced.collect()}")
+
+# 2. groupByKey - Group values with same key
+print("\n2. groupByKey():")
+grouped = pair_rdd.groupByKey().mapValues(list)
+print(f"   Grouped by key: {grouped.collect()}")
+
+# 3. sortByKey - Sort by key
+print("\n3. sortByKey():")
+sorted_asc = pair_rdd.sortByKey()
+sorted_desc = pair_rdd.sortByKey(False)
+print(f"   Sorted ascending: {sorted_asc.collect()}")
+print(f"   Sorted descending: {sorted_desc.collect()}")
+
+# 4. keys - Get only keys
+print("\n4. keys():")
+keys_only = pair_rdd.keys()
+print(f"   Keys: {keys_only.collect()}")
+
+# 5. values - Get only values
+print("\n5. values():")
+values_only = pair_rdd.values()
+print(f"   Values: {values_only.collect()}")
+
+# 6. countByKey - Count elements per key
+print("\n6. countByKey():")
+count_by_key = pair_rdd.countByKey()
+print(f"   Count by key: {dict(count_by_key)}")
+
+# 7. mapValues - Transform values only
+print("\n7. mapValues():")
+mapped_values = pair_rdd.mapValues(lambda x: x * 10)
+print(f"   Values multiplied by 10: {mapped_values.collect()}")
+
+# 8. flatMapValues - Expand values
+print("\n8. flatMapValues():")
+flat_mapped = pair_rdd.flatMapValues(lambda x: [x, x*2])
+print(f"   Each value expanded: {flat_mapped.collect()}")
+
+sc.stop()
+
+
+21.Get new dates by adding 4 days, and subtracting 7 days in below dates
+"2020-01-02","2023-01-15","2025-01-30"
+SOL:
+from pyspark.sql import SparkSession
+from pyspark.sql.functions import *
+
+# Create SparkSession
+spark = SparkSession.builder.appName("DateOperations").getOrCreate()
+
+# Create DataFrame with dates
+dates = [("2020-01-02",), ("2023-01-15",), ("2025-01-30",)]
+df = spark.createDataFrame(dates, ["date"])
+
+# Convert to date type and perform operations
+result = df.withColumn("date", to_date("date")) \
+           .withColumn("plus_4_days", date_add("date", 4)) \
+           .withColumn("minus_7_days", date_sub("date", 7))
+
+print("Date Operations:")
+result.show()
+
+
+22.Use the Operation Read CSV file on RDD with Scala operation
+SOL:
+
+
+
+
+
+
+
+
+
+23.Create table as follows containing array and map operations 
+SOL:
+from pyspark.sql import SparkSession
+from pyspark.sql.types import *
+from pyspark.sql.functions import *
+
+# Create SparkSession
+spark = SparkSession.builder.appName("ArrayMapOperations").getOrCreate()
+
+# Create DataFrame with array and map columns
+data = [
+    ("James", ["Java", "Scala"], {"hair": "black", "eye": "brown"}),
+    ("Michael", ["Spark", "Java", None], {"hair": "brown", "eye": None}),
+    ("Robert", ["CSharp", ""], {"hair": "red", "eye": ""}),
+    ("Washington", None, None),
+    ("Jefferson", [], {})
+]
+
+# Define schema
+schema = StructType([
+    StructField("name", StringType(), True),
+    StructField("knownLanguages", ArrayType(StringType()), True),
+    StructField("properties", MapType(StringType(), StringType()), True)
+])
+
+# Create DataFrame
+df = spark.createDataFrame(data, schema)
+
+print("Original DataFrame:")
+df.show(truncate=False)
+df.printSchema()
+
+print("\n" + "="*50)
+print("ARRAY OPERATIONS")
+print("="*50)
+
+# 1. Array length
+df_array = df.withColumn("languages_count", size("knownLanguages"))
+print("1. Count of known languages:")
+df_array.select("name", "knownLanguages", "languages_count").show(truncate=False)
+
+# 2. Check if array contains specific language
+df_array = df_array.withColumn("knows_java", array_contains("knownLanguages", "Java"))
+print("2. Knows Java:")
+df_array.select("name", "knownLanguages", "knows_java").show(truncate=False)
+
+# 3. Explode array - each language as separate row
+print("3. Exploded languages:")
+df.select("name", explode("knownLanguages").alias("language")).show()
+
+# 4. Access specific array element
+df_array = df_array.withColumn("first_language", col("knownLanguages")[0])
+print("4. First language:")
+df_array.select("name", "knownLanguages", "first_language").show(truncate=False)
+
+print("\n" + "="*50)
+print("MAP OPERATIONS")
+print("="*50)
+
+# 1. Get map keys
+df_map = df.withColumn("property_keys", map_keys("properties"))
+print("1. Map keys:")
+df_map.select("name", "properties", "property_keys").show(truncate=False)
+
+# 2. Get map values
+df_map = df_map.withColumn("property_values", map_values("properties"))
+print("2. Map values:")
+df_map.select("name", "properties", "property_values").show(truncate=False)
+
+# 3. Access specific map values
+df_map = df_map.withColumn("hair_color", col("properties")["hair"]) \
+               .withColumn("eye_color", col("properties")["eye"])
+print("3. Specific map values:")
+df_map.select("name", "hair_color", "eye_color").show(truncate=False)
+
+# 4. Check if map contains key
+df_map = df_map.withColumn("has_hair_property", map_contains_key("properties", "hair"))
+print("4. Has hair property:")
+df_map.select("name", "properties", "has_hair_property").show(truncate=False)
+
+print("\n" + "="*50)
+print("COMBINED OPERATIONS")
+print("="*50)
+
+# People who know Java and have black hair
+result = df.filter(
+    array_contains("knownLanguages", "Java") & 
+    (col("properties")["hair"] == "black")
+)
+print("People who know Java and have black hair:")
+result.select("name", "knownLanguages", "properties").show(truncate=False)
+
+# Final result with all operations
+final_df = df \
+    .withColumn("languages_count", size("knownLanguages")) \
+    .withColumn("knows_java", array_contains("knownLanguages", "Java")) \
+    .withColumn("hair_color", col("properties")["hair"]) \
+    .withColumn("property_keys", map_keys("properties"))
+
+print("Final DataFrame with all operations:")
+final_df.select("name", "languages_count", "knows_java", "hair_color", "property_keys").show()
+
+spark.stop()
+
+
+24.Find current timestamp and hour, Minute, second separately for today's date 
+SOL:
+from pyspark.sql import SparkSession
+from pyspark.sql.functions import *
+
+# Create SparkSession
+spark = SparkSession.builder.appName("TimestampDemo").getOrCreate()
+
+# Create DataFrame with current timestamp
+df = spark.createDataFrame([(1,)], ["id"]) \
+    .withColumn("current_timestamp", current_timestamp()) \
+    .withColumn("current_date", current_date())
+
+print("Current Date and Timestamp:")
+df.show(truncate=False)
+
+# Extract hour, minute, second separately
+result = df.withColumn("hour", hour("current_timestamp")) \
+           .withColumn("minute", minute("current_timestamp")) \
+           .withColumn("second", second("current_timestamp")) \
+           .withColumn("formatted_time", date_format("current_timestamp", "HH:mm:ss"))
+
+print("Extracted Time Components:")
+result.select("current_timestamp", "hour", "minute", "second", "formatted_time").show(truncate=False)
+
+spark.stop()
+
+
+
+
+25.Write a Maven dependencies for writing and Reading Avro Data File 
+SOL:
+# For PySpark, you need to start with these configurations
+from pyspark.sql import SparkSession
+
+# Create SparkSession with Avro support
+spark = SparkSession.builder \
+    .appName("AvroExample") \
+    .config("spark.jars.packages", "org.apache.spark:spark-avro_2.12:3.4.0") \
+    .getOrCreate()
+
+print("✅ Spark Session with Avro support created!")
+
+
+
+26.Ceate the following two data frames and apply Inner and Right Outer 
+join.
+SOL:
+from pyspark.sql import SparkSession
+from pyspark.sql import Row
+
+# Create SparkSession
+spark = SparkSession.builder.appName("DataFrameJoins").getOrCreate()
+
+# Create Employee DataFrame
+employee_data = [
+    (1, "Smith", -1, 2018, 10, "M"),
+    (2, "Rose", 1, 2010, 20, "M"),
+    (3, "Williams", 1, 2010, 10, "M"),
+    (4, "Jones", 2, 2005, 10, "F"),
+    (5, "Brown", 2, 2010, 40, ""),
+    (6, "Brown", 2, 2010, 50, "")
+]
+
+employee_columns = ["emp_id", "name", "superior_emp_id", "year_joined", "emp_dept_id", "gender"]
+employee_df = spark.createDataFrame(employee_data, employee_columns)
+
+# Create Department DataFrame
+department_data = [
+    ("Finance", 10),
+    ("Marketing", 20),
+    ("Sales", 30),
+    ("IT", 40)
+]
+
+department_columns = ["dept_name", "dept_id"]
+department_df = spark.createDataFrame(department_data, department_columns)
+
+print("Employee DataFrame:")
+employee_df.show()
+
+print("Department DataFrame:")
+department_df.show()
+
+# Inner Join
+print("INNER JOIN:")
+inner_join_df = employee_df.join(department_df, employee_df.emp_dept_id == department_df.dept_id, "inner")
+inner_join_df.show()
+
+# Right Outer Join
+print("RIGHT OUTER JOIN:")
+right_join_df = employee_df.join(department_df, employee_df.emp_dept_id == department_df.dept_id, "right")
+right_join_df.show()
+
+# Additional: Show which employees don't have departments and vice versa
+print("Employees without departments:")
+no_dept_df = employee_df.join(department_df, employee_df.emp_dept_id == department_df.dept_id, "left_anti")
+no_dept_df.show()
+
+print("Departments without employees:")
+no_emp_df = department_df.join(employee_df, department_df.dept_id == employee_df.emp_dept_id, "left_anti")
+no_emp_df.show()
+
+spark.stop()
